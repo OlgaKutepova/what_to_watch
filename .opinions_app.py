@@ -1,7 +1,10 @@
+import csv
 from datetime import datetime
 from random import randrange
 
+import click
 from flask import Flask, abort, flash, redirect, render_template, url_for
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField, TextAreaField, URLField
@@ -13,14 +16,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite3'
 app.config['SECRET_KEY'] = 'MY SECRET KEY'
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 
 class Opinion(db.Model):
+    """Модель Мнений"""
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(128), nullable=False)
     text = db.Column(db.Text, unique=True, nullable=False)
-    # source = db.Column(db.String(256))
+    source = db.Column(db.String(256))
     timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    added_by = db.Column(db.String(64))
 
 
 class OpinionForm(FlaskForm):
@@ -38,6 +44,21 @@ class OpinionForm(FlaskForm):
         validators=[Length(1, 256), Optional()]
     )
     submit = SubmitField('Добавить')
+
+
+@app.cli.command('load_opinions')
+def load_opinions_command():
+    """Функция загрузки мнений в базу данных."""
+
+    with open('opinions.csv', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        counter = 0
+        for row in reader:
+            opinion = Opinion(**row)
+            db.session.add(opinion)
+            db.session.commit()
+            counter += 1
+    click.echo(f'Загружено мнений: {counter}')
 
 
 @app.errorhandler(500)
@@ -74,7 +95,7 @@ def add_opinion_view():
         opinion = Opinion(
             title=form.title.data,
             text=form.text.data,
-            # source=form.source.data
+            source=form.source.data
         )
         db.session.add(opinion)
         db.session.commit()
